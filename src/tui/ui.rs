@@ -1,0 +1,178 @@
+//! TUI rendering.
+
+use super::App;
+use crate::scanner::PortEntry;
+use ratatui::{
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::Line,
+    widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
+    Frame,
+};
+
+/// Draw the main UI.
+pub fn draw(f: &mut Frame, app: &App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),  // Header
+            Constraint::Min(10),    // Table
+            Constraint::Length(5),  // Detail
+            Constraint::Length(1),  // Footer
+        ])
+        .split(f.area());
+    
+    // Header
+    let header = Paragraph::new(format!(
+        " portpilot - {} ports listening                    [H]elp [Q]uit",
+        app.entries.len()
+    ))
+    .style(Style::default().bg(Color::Blue).fg(Color::White));
+    f.render_widget(header, chunks[0]);
+    
+    // Port table
+    draw_table(f, app, chunks[1]);
+    
+    // Detail panel
+    draw_detail(f, app, chunks[2]);
+    
+    // Footer
+    let footer_text = if app.filter_mode {
+        format!("Filter: {}_", app.filter_input)
+    } else {
+        "[K] Kill    [S] SIGTERM    [/] Filter    [R] Refresh    [E] External    [L] Local".to_string()
+    };
+    let footer = Paragraph::new(footer_text)
+        .style(Style::default().bg(Color::DarkGray).fg(Color::White));
+    f.render_widget(footer, chunks[3]);
+    
+    // Help popup
+    if app.show_help {
+        draw_help(f);
+    }
+}
+
+fn draw_table(f: &mut Frame, app: &App, area: Rect) {
+    let header_cells = ["PORT", "PROTO", "PROCESS", "PID", "MEM", "ADDRESS"]
+        .iter()
+        .map(|h| Cell::from(*h).style(Style::default().add_modifier(Modifier::BOLD)));
+    let header = Row::new(header_cells).height(1);
+    
+    let rows = app.entries.iter().map(|entry| {
+        let cells = vec![
+            Cell::from(entry.port.to_string()),
+            Cell::from(entry.protocol.to_string()),
+            Cell::from(entry.process_display().to_string()),
+            Cell::from(entry.pid.map(|p| p.to_string()).unwrap_or_else(|| "-".to_string())),
+            Cell::from(entry.memory_display()),
+            Cell::from(format_address(entry)),
+        ];
+        Row::new(cells)
+    });
+    
+    let widths = [
+        Constraint::Length(7),
+        Constraint::Length(6),
+        Constraint::Length(16),
+        Constraint::Length(8),
+        Constraint::Length(8),
+        Constraint::Min(15),
+    ];
+    
+    let table = Table::new(rows, widths)
+        .header(header)
+        .block(Block::default().borders(Borders::ALL))
+        .highlight_style(Style::default().bg(Color::DarkGray))
+        .highlight_symbol("> ");
+    
+    let mut state = TableState::default();
+    state.select(Some(app.selected));
+    
+    f.render_stateful_widget(table, area, &mut state);
+}
+
+fn draw_detail(f: &mut Frame, app: &App, area: Rect) {
+    let block = Block::default().borders(Borders::ALL);
+    
+    let content = if let Some(entry) = app.selected_entry() {
+        let process = entry.process_name.as_deref().unwrap_or("unknown");
+        let cmd = entry.command.as_deref().unwrap_or("-");
+        let user = entry.user.as_deref().unwrap_or("-");
+        let cpu = entry.cpu_percent.map(|c| format!("{:.1}%", c)).unwrap_or_else(|| "-".to_string());
+        
+        vec![
+            Line::from(format!("Process: {}    Command: {}", process, cmd)),
+            Line::from(format!(
+                "User: {}    Memory: {}    CPU: {}",
+                user,
+                entry.memory_display(),
+                cpu
+            )),
+        ]
+    } else {
+        vec![Line::from("No port selected")]
+    };
+    
+    let paragraph = Paragraph::new(content).block(block);
+    f.render_widget(paragraph, area);
+}
+
+fn draw_help(f: &mut Frame) {
+    let area = centered_rect(60, 50, f.area());
+    
+    let help_text = vec![
+        Line::from("Keybindings:"),
+        Line::from(""),
+        Line::from("  j/Down    Move down"),
+        Line::from("  k/Up      Move up"),
+        Line::from("  g         Go to top"),
+        Line::from("  G         Go to bottom"),
+        Line::from("  K         Kill process"),
+        Line::from("  /         Filter by process"),
+        Line::from("  e         Toggle external only"),
+        Line::from("  l         Toggle localhost only"),
+        Line::from("  s         Cycle sort field"),
+        Line::from("  r/R       Refresh"),
+        Line::from("  q/Esc     Quit"),
+        Line::from(""),
+        Line::from("Press any key to close"),
+    ];
+    
+    let block = Block::default()
+        .title(" Help ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::DarkGray));
+    
+    let paragraph = Paragraph::new(help_text).block(block);
+    
+    f.render_widget(Clear, area);
+    f.render_widget(paragraph, area);
+}
+
+fn format_address(entry: &PortEntry) -> String {
+    if entry.is_external() {
+        "0.0.0.0".to_string()
+    } else {
+        entry.address.to_string()
+    }
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(area);
+    
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+}
