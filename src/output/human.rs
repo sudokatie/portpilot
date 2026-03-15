@@ -114,7 +114,7 @@ pub fn format_detail(entry: &PortEntry, opts: &OutputOptions) -> String {
     if let (Some(ppid), Some(ref pname)) = (entry.parent_pid, &entry.parent_name) {
         output.push_str(&format!("\n  Parent:     {} (PID {})\n", pname, ppid));
         if let Some(ref cmd) = entry.command {
-            let short_cmd = cmd.split('/').last().unwrap_or(cmd);
+            let short_cmd = cmd.rsplit('/').next().unwrap_or(cmd);
             output.push_str(&format!("              └─ {}\n", short_cmd));
         }
     }

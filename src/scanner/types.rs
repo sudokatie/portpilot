@@ -22,9 +22,10 @@ impl std::fmt::Display for Protocol {
 }
 
 /// Socket state.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum SocketState {
+    #[default]
     Listen,
     Established,
     TimeWait,
@@ -42,12 +43,6 @@ impl std::fmt::Display for SocketState {
             SocketState::CloseWait => write!(f, "CLOSE_WAIT"),
             SocketState::Other(s) => write!(f, "{}", s),
         }
-    }
-}
-
-impl Default for SocketState {
-    fn default() -> Self {
-        SocketState::Listen
     }
 }
 
