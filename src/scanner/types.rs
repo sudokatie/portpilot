@@ -58,7 +58,7 @@ pub struct PortEntry {
     /// Process ID.
     pub pid: Option<u32>,
     /// Process name.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "process", skip_serializing_if = "Option::is_none")]
     pub process_name: Option<String>,
     /// Full command line.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -79,18 +79,25 @@ pub struct PortEntry {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_pid: Option<u32>,
     /// Parent process name.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "parent_process", skip_serializing_if = "Option::is_none")]
     pub parent_name: Option<String>,
     /// Socket state.
     pub state: SocketState,
     /// Container name if in Docker.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub container: Option<String>,
+    /// Whether port is externally accessible (computed field for JSON).
+    #[serde(skip_deserializing)]
+    pub external: bool,
 }
 
 impl PortEntry {
     /// Create a new port entry.
     pub fn new(port: u16, protocol: Protocol, address: IpAddr) -> Self {
+        let external = match address {
+            IpAddr::V4(addr) => addr.is_unspecified(),
+            IpAddr::V6(addr) => addr.is_unspecified(),
+        };
         Self {
             port,
             protocol,
@@ -106,6 +113,7 @@ impl PortEntry {
             parent_name: None,
             state: SocketState::Listen,
             container: None,
+            external,
         }
     }
     

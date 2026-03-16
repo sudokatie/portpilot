@@ -13,6 +13,11 @@ use portpilot::{
 };
 use std::process::ExitCode;
 
+/// Exit code for invalid arguments or runtime errors.
+fn exit_error() -> ExitCode {
+    ExitCode::from(2)
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     
@@ -83,7 +88,7 @@ fn main() -> ExitCode {
     if let Some(port_spec) = cli.parse_port() {
         if let Err(msg) = port_spec.validate() {
             eprintln!("Error: {}", msg);
-            return ExitCode::FAILURE;
+            return exit_error();
         }
         
         match port_spec {
@@ -95,7 +100,7 @@ fn main() -> ExitCode {
             }
             PortSpec::Invalid(s) => {
                 eprintln!("Invalid port: {}", s);
-                return ExitCode::FAILURE;
+                return exit_error();
             }
         }
     }
@@ -161,6 +166,10 @@ fn handle_single_port(port: u16, cli: &Cli, output_opts: &OutputOptions) -> Exit
                         }
                         Err(e) => {
                             eprintln!("Failed to kill process: {}", e);
+                            // Suggest sudo for permission errors
+                            if e.to_string().contains("Permission denied") {
+                                eprintln!("Try running with sudo.");
+                            }
                             return ExitCode::FAILURE;
                         }
                     }

@@ -34,15 +34,20 @@ mod tests {
     
     #[test]
     fn test_format_ports_json() {
-        let entries = vec![
-            PortEntry::new(3000, Protocol::Tcp, IpAddr::V4(Ipv4Addr::LOCALHOST)),
-        ];
+        let mut entry = PortEntry::new(3000, Protocol::Tcp, IpAddr::V4(Ipv4Addr::LOCALHOST));
+        entry.process_name = Some("node".to_string());
+        entry.parent_name = Some("bash".to_string());
+        let entries = vec![entry];
         
         let json = format_ports(&entries);
         
         assert!(json.contains("\"port\": 3000"));
         assert!(json.contains("\"protocol\": \"tcp\""));
         assert!(json.contains("\"summary\""));
+        // Verify spec field names
+        assert!(json.contains("\"process\": \"node\""), "should use 'process' not 'process_name'");
+        assert!(json.contains("\"parent_process\": \"bash\""), "should use 'parent_process' not 'parent_name'");
+        assert!(json.contains("\"external\": false"), "should include 'external' field");
     }
     
     #[test]
@@ -52,5 +57,6 @@ mod tests {
         let json = format_port(&entry);
         
         assert!(json.contains("\"port\": 8080"));
+        assert!(json.contains("\"external\": true"), "0.0.0.0 should be external=true");
     }
 }
