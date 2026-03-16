@@ -76,14 +76,21 @@ portpilot --tui
 | `-j, --json` | Output as JSON |
 | `-q, --quiet` | Exit code only, no output |
 | `-1, --oneline` | Minimal single-line output |
+| `--no-color` | Disable colored output |
 | `-u, --udp` | Include UDP ports |
+| `-s, --sockets` | Include Unix sockets |
 | `-f, --filter` | Filter by process name |
+| `--user` | Filter by username |
 | `-e, --external` | Only external ports (0.0.0.0) |
 | `-l, --local` | Only localhost ports |
+| `--sort` | Sort by: port, process, memory, cpu, time |
+| `-r, --reverse` | Reverse sort order |
 | `-k, --kill` | Kill process using the port |
 | `--force` | Use SIGKILL immediately |
 | `--wait` | Block until port is free |
+| `--timeout` | Timeout for --wait in seconds (default: 30) |
 | `-w, --watch` | Live-updating display |
+| `--interval` | Watch refresh interval in ms (default: 1000) |
 | `--tui` | Interactive TUI mode |
 
 ## License
