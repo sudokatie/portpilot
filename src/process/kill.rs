@@ -52,6 +52,40 @@ impl KillOptions {
     }
 }
 
+/// Send SIGTERM only to a process (no SIGKILL fallback).
+pub fn send_sigterm(pid: u32) -> Result<(), KillError> {
+    #[cfg(unix)]
+    {
+        use libc::{kill, SIGTERM};
+        
+        let pid = pid as libc::pid_t;
+        
+        // Check if process exists
+        let exists = unsafe { kill(pid, 0) };
+        if exists != 0 {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::ESRCH) {
+                return Err(KillError::ProcessNotFound(pid as u32));
+            } else if err.raw_os_error() == Some(libc::EPERM) {
+                return Err(KillError::PermissionDenied(pid as u32));
+            }
+        }
+        
+        let result = unsafe { kill(pid, SIGTERM) };
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            return Err(KillError::Failed(err.to_string()));
+        }
+        
+        Ok(())
+    }
+    
+    #[cfg(not(unix))]
+    {
+        Err(KillError::Failed("SIGTERM not supported on this platform".to_string()))
+    }
+}
+
 /// Kill a process by PID.
 pub fn kill_process(pid: u32, opts: &KillOptions) -> Result<(), KillError> {
     #[cfg(unix)]

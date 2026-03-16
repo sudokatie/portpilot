@@ -33,6 +33,12 @@ pub struct App {
     pub filter_input: String,
     /// Show help.
     pub show_help: bool,
+    /// Show detail popup.
+    pub show_detail: bool,
+    /// Show kill confirmation.
+    pub confirm_kill: bool,
+    /// Status message (for feedback).
+    pub status_message: Option<String>,
 }
 
 impl App {
@@ -47,6 +53,9 @@ impl App {
             filter_mode: false,
             filter_input: String::new(),
             show_help: false,
+            show_detail: false,
+            confirm_kill: false,
+            status_message: None,
         }
     }
     
@@ -188,6 +197,42 @@ impl App {
                         }
                     } else if self.show_help {
                         self.show_help = false;
+                    } else if self.show_detail {
+                        // Any key closes detail view
+                        self.show_detail = false;
+                    } else if self.confirm_kill {
+                        // Kill confirmation dialog
+                        match key.code {
+                            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                // Confirmed - kill with SIGTERM then SIGKILL
+                                if let Some(entry) = self.selected_entry().cloned() {
+                                    if let Some(pid) = entry.pid {
+                                        match crate::process::kill_process(
+                                            pid,
+                                            &crate::process::KillOptions::new(),
+                                        ) {
+                                            Ok(()) => {
+                                                self.status_message = Some(format!(
+                                                    "Killed {} (PID {})",
+                                                    entry.process_name.as_deref().unwrap_or("process"),
+                                                    pid
+                                                ));
+                                            }
+                                            Err(e) => {
+                                                self.status_message = Some(format!("Kill failed: {}", e));
+                                            }
+                                        }
+                                        self.refresh();
+                                    }
+                                }
+                                self.confirm_kill = false;
+                            }
+                            _ => {
+                                // Any other key cancels
+                                self.confirm_kill = false;
+                                self.status_message = Some("Kill cancelled".to_string());
+                            }
+                        }
                     } else {
                         match key.code {
                             KeyCode::Char('q') | KeyCode::Esc => {
@@ -208,14 +253,35 @@ impl App {
                             KeyCode::Char('?') | KeyCode::Char('h') => {
                                 self.show_help = true;
                             }
+                            KeyCode::Enter => {
+                                // Show detail view for selected port
+                                if self.selected_entry().is_some() {
+                                    self.show_detail = true;
+                                }
+                            }
                             KeyCode::Char('K') => {
-                                // Kill selected process
-                                if let Some(entry) = self.selected_entry() {
+                                // Show kill confirmation dialog
+                                if self.selected_entry().is_some() {
+                                    self.confirm_kill = true;
+                                    self.status_message = None;
+                                }
+                            }
+                            KeyCode::Char('S') => {
+                                // Send SIGTERM only (no SIGKILL fallback)
+                                if let Some(entry) = self.selected_entry().cloned() {
                                     if let Some(pid) = entry.pid {
-                                        let _ = crate::process::kill_process(
-                                            pid,
-                                            &crate::process::KillOptions::new(),
-                                        );
+                                        match crate::process::send_sigterm(pid) {
+                                            Ok(()) => {
+                                                self.status_message = Some(format!(
+                                                    "Sent SIGTERM to {} (PID {})",
+                                                    entry.process_name.as_deref().unwrap_or("process"),
+                                                    pid
+                                                ));
+                                            }
+                                            Err(e) => {
+                                                self.status_message = Some(format!("SIGTERM failed: {}", e));
+                                            }
+                                        }
                                         self.refresh();
                                     }
                                 }

@@ -198,7 +198,8 @@ pub fn enrich_with_sysinfo(entry: &mut PortEntry, system: &sysinfo::System) {
     use sysinfo::Pid;
     
     if let Some(pid) = entry.pid {
-        let pid = Pid::from_u32(pid);
+        let pid_u32 = pid;
+        let pid = Pid::from_u32(pid_u32);
         if let Some(process) = system.process(pid) {
             let cmd_parts: Vec<String> = process.cmd()
                 .iter()
@@ -215,7 +216,74 @@ pub fn enrich_with_sysinfo(entry: &mut PortEntry, system: &sysinfo::System) {
                 }
             }
         }
+        
+        // Detect container (Linux only)
+        #[cfg(target_os = "linux")]
+        {
+            entry.container = detect_container(pid_u32);
+        }
     }
+}
+
+/// Detect if a process is running in a Docker container.
+#[cfg(target_os = "linux")]
+fn detect_container(pid: u32) -> Option<String> {
+    use std::fs;
+    
+    // Read cgroup info
+    let cgroup_path = format!("/proc/{}/cgroup", pid);
+    let content = fs::read_to_string(&cgroup_path).ok()?;
+    
+    for line in content.lines() {
+        // Format: hierarchy-ID:controller-list:cgroup-path
+        // Docker containers have paths like /docker/<container_id>
+        if let Some(path) = line.split(':').nth(2) {
+            if path.contains("/docker/") {
+                // Extract container ID (first 12 chars)
+                if let Some(id_start) = path.find("/docker/") {
+                    let id = &path[id_start + 8..];
+                    let short_id = if id.len() > 12 { &id[..12] } else { id };
+                    
+                    // Try to get container name from Docker
+                    if let Some(name) = get_docker_container_name(short_id) {
+                        return Some(name);
+                    }
+                    return Some(short_id.to_string());
+                }
+            }
+            // Also check for containerd/kubernetes
+            if path.contains("/kubepods/") || path.contains("/containerd/") {
+                if let Some(id_pos) = path.rfind('/') {
+                    let id = &path[id_pos + 1..];
+                    let short_id = if id.len() > 12 { &id[..12] } else { id };
+                    return Some(short_id.to_string());
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+/// Try to get Docker container name via docker CLI.
+#[cfg(target_os = "linux")]
+fn get_docker_container_name(container_id: &str) -> Option<String> {
+    use std::process::Command;
+    
+    let output = Command::new("docker")
+        .args(["inspect", "--format", "{{.Name}}", container_id])
+        .output()
+        .ok()?;
+    
+    if output.status.success() {
+        let name = String::from_utf8_lossy(&output.stdout);
+        let name = name.trim().trim_start_matches('/');
+        if !name.is_empty() {
+            return Some(name.to_string());
+        }
+    }
+    
+    None
 }
 
 #[cfg(test)]

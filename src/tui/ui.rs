@@ -39,6 +39,8 @@ pub fn draw(f: &mut Frame, app: &App) {
     // Footer
     let footer_text = if app.filter_mode {
         format!("Filter: {}_", app.filter_input)
+    } else if let Some(ref msg) = app.status_message {
+        msg.clone()
     } else {
         "[K] Kill    [S] SIGTERM    [/] Filter    [R] Refresh    [E] External    [L] Local".to_string()
     };
@@ -46,8 +48,12 @@ pub fn draw(f: &mut Frame, app: &App) {
         .style(Style::default().bg(Color::DarkGray).fg(Color::White));
     f.render_widget(footer, chunks[3]);
     
-    // Help popup
-    if app.show_help {
+    // Popups (in order of priority)
+    if app.confirm_kill {
+        draw_kill_confirm(f, app);
+    } else if app.show_detail {
+        draw_detail_popup(f, app);
+    } else if app.show_help {
         draw_help(f);
     }
 }
@@ -155,6 +161,94 @@ fn format_address(entry: &PortEntry) -> String {
     } else {
         entry.address.to_string()
     }
+}
+
+fn draw_detail_popup(f: &mut Frame, app: &App) {
+    let area = centered_rect(70, 60, f.area());
+    
+    let content = if let Some(entry) = app.selected_entry() {
+        let process = entry.process_name.as_deref().unwrap_or("unknown");
+        let cmd = entry.command.as_deref().unwrap_or("-");
+        let user = entry.user.as_deref().unwrap_or("-");
+        let cpu = entry.cpu_percent.map(|c| format!("{:.1}%", c)).unwrap_or_else(|| "-".to_string());
+        let exposure = if entry.is_external() {
+            "externally accessible"
+        } else if entry.is_localhost() {
+            "localhost only"
+        } else {
+            ""
+        };
+        
+        let mut lines = vec![
+            Line::from(format!("PORT {} is in use", entry.port)),
+            Line::from(""),
+            Line::from(format!("Process:    {}", process)),
+        ];
+        
+        if let Some(pid) = entry.pid {
+            lines.push(Line::from(format!("PID:        {}", pid)));
+        }
+        
+        lines.push(Line::from(format!("Command:    {}", cmd)));
+        lines.push(Line::from(format!("User:       {}", user)));
+        lines.push(Line::from(format!("Memory:     {}", entry.memory_display())));
+        lines.push(Line::from(format!("CPU:        {}", cpu)));
+        lines.push(Line::from(format!("Listening:  {}:{} ({})", entry.address, entry.port, exposure)));
+        
+        if let (Some(ppid), Some(ref pname)) = (entry.parent_pid, &entry.parent_name) {
+            lines.push(Line::from(""));
+            lines.push(Line::from(format!("Parent:     {} (PID {})", pname, ppid)));
+        }
+        
+        lines.push(Line::from(""));
+        lines.push(Line::from("Press any key to close"));
+        
+        lines
+    } else {
+        vec![Line::from("No port selected")]
+    };
+    
+    let block = Block::default()
+        .title(" Port Detail ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::DarkGray));
+    
+    let paragraph = Paragraph::new(content).block(block);
+    
+    f.render_widget(Clear, area);
+    f.render_widget(paragraph, area);
+}
+
+fn draw_kill_confirm(f: &mut Frame, app: &App) {
+    let area = centered_rect(50, 30, f.area());
+    
+    let content = if let Some(entry) = app.selected_entry() {
+        let process = entry.process_name.as_deref().unwrap_or("unknown");
+        let pid = entry.pid.map(|p| p.to_string()).unwrap_or_else(|| "?".to_string());
+        
+        vec![
+            Line::from(""),
+            Line::from(format!("Kill {} (PID {})?", process, pid)),
+            Line::from(""),
+            Line::from("This will send SIGTERM, then SIGKILL if needed."),
+            Line::from(""),
+            Line::from("[Y] Yes, kill    [N/Esc] Cancel"),
+        ]
+    } else {
+        vec![Line::from("No process selected")]
+    };
+    
+    let block = Block::default()
+        .title(" Confirm Kill ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Red).fg(Color::White));
+    
+    let paragraph = Paragraph::new(content)
+        .block(block)
+        .style(Style::default().fg(Color::White));
+    
+    f.render_widget(Clear, area);
+    f.render_widget(paragraph, area);
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {

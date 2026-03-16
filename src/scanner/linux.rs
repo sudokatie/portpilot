@@ -77,6 +77,74 @@ impl LinuxScanner {
         Some(entry)
     }
     
+    /// Parse /proc/net/unix for Unix sockets.
+    fn parse_unix_sockets(&self) -> Result<Vec<PortEntry>, ScanError> {
+        let content = fs::read_to_string("/proc/net/unix")?;
+        let mut entries = Vec::new();
+        
+        for line in content.lines().skip(1) {
+            if let Some(entry) = self.parse_unix_socket_line(line) {
+                entries.push(entry);
+            }
+        }
+        
+        Ok(entries)
+    }
+    
+    /// Parse a single line from /proc/net/unix.
+    fn parse_unix_socket_line(&self, line: &str) -> Option<PortEntry> {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 7 {
+            return None;
+        }
+        
+        // Format: Num RefCount Protocol Flags Type St Inode Path
+        // Only include listening sockets (State 01 = LISTENING for stream sockets)
+        let state_num = u8::from_str_radix(parts[5], 16).ok()?;
+        
+        // 01 = UNCONNECTED (listening for STREAM), 03 = CONNECTED
+        // For DGRAM sockets we want state 07 (listening)
+        let socket_type = u8::from_str_radix(parts[4], 16).ok()?;
+        
+        // Type 1 = STREAM, Type 2 = DGRAM
+        let is_listening = match socket_type {
+            1 => state_num == 1,  // STREAM: 01 = unconnected/listening
+            2 => true,            // DGRAM: always "listening" 
+            _ => false,
+        };
+        
+        if !is_listening {
+            return None;
+        }
+        
+        let inode: u64 = parts[6].parse().ok()?;
+        
+        // Path is optional (abstract sockets may not have one)
+        let path = if parts.len() > 7 {
+            parts[7..].join(" ")
+        } else {
+            String::new()
+        };
+        
+        // Skip sockets without a path (anonymous)
+        if path.is_empty() {
+            return None;
+        }
+        
+        // Use port 0 for Unix sockets, store path in command field
+        let mut entry = PortEntry::new(0, Protocol::Tcp, IpAddr::V4(Ipv4Addr::LOCALHOST));
+        entry.state = SocketState::Listen;
+        entry.command = Some(path);
+        
+        // Map inode to PID
+        if let Some(pid) = self.find_pid_for_inode(inode) {
+            entry.pid = Some(pid);
+            enrich_with_sysinfo(&mut entry, &self.system);
+        }
+        
+        Some(entry)
+    }
+    
     /// Find PID that owns an inode by scanning /proc/[pid]/fd/.
     fn find_pid_for_inode(&self, target_inode: u64) -> Option<u32> {
         let proc = Path::new("/proc");
@@ -133,6 +201,13 @@ impl PortScanner for LinuxScanner {
                     e.protocol = Protocol::Udp;
                 }
                 entries.extend(udp6);
+            }
+        }
+        
+        // Parse Unix sockets if requested
+        if opts.include_sockets {
+            if let Ok(unix_sockets) = self.parse_unix_sockets() {
+                entries.extend(unix_sockets);
             }
         }
         

@@ -1,9 +1,10 @@
 //! Watch mode for live updates.
 
-use crate::scanner::{get_scanner, ScanOptions};
+use crate::scanner::{get_scanner, PortEntry, ScanOptions};
 use crate::filter::{filter_entries, FilterOptions};
 use crate::sort::{sort_entries, SortOptions};
-use crate::output::{format_ports, OutputOptions};
+use crate::output::{OutputFormat, OutputOptions, PortSummary};
+use colored::Colorize;
 use std::collections::HashSet;
 use std::io::{self, Write};
 use std::time::Duration;
@@ -19,6 +20,7 @@ pub fn run_watch(
 ) -> io::Result<()> {
     let scanner = get_scanner();
     let mut previous_ports: HashSet<u16> = HashSet::new();
+    let use_colors = !output_opts.no_color && output_opts.format == OutputFormat::Human;
     
     // Set up Ctrl+C handler
     let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
@@ -41,12 +43,12 @@ pub fn run_watch(
                 
                 // Track changes
                 let current_ports: HashSet<u16> = entries.iter().map(|e| e.port).collect();
-                let _added: Vec<_> = current_ports.difference(&previous_ports).collect();
-                let _removed: Vec<_> = previous_ports.difference(&current_ports).collect();
+                let added: HashSet<_> = current_ports.difference(&previous_ports).copied().collect();
+                let removed: HashSet<_> = previous_ports.difference(&current_ports).copied().collect();
                 
-                // Output
-                let output = format_ports(&entries, &output_opts);
-                println!("{}", output);
+                // Output with highlighting
+                let output = format_watch_output(&entries, &added, &removed, use_colors, &output_opts);
+                print!("{}", output);
                 
                 // Update for next iteration
                 previous_ports = current_ports;
@@ -61,6 +63,116 @@ pub fn run_watch(
     }
     
     Ok(())
+}
+
+/// Format watch output with change highlighting.
+fn format_watch_output(
+    entries: &[PortEntry],
+    added: &HashSet<u16>,
+    removed: &HashSet<u16>,
+    use_colors: bool,
+    opts: &OutputOptions,
+) -> String {
+    let mut output = String::new();
+    
+    // Header
+    let header = format!(
+        "  {:>5}   {:5}  {:16} {:>6}   {:>6}   {:10} {}",
+        "PORT", "PROTO", "PROCESS", "PID", "MEM", "STATE", "ADDRESS"
+    );
+    output.push_str(&if use_colors { header.bold().to_string() } else { header });
+    output.push('\n');
+    
+    // Entries with highlighting
+    for entry in entries {
+        let is_new = added.contains(&entry.port);
+        
+        let addr_str = if entry.is_external() {
+            "0.0.0.0".to_string()
+        } else {
+            entry.address.to_string()
+        };
+        
+        let process = entry.process_display();
+        let pid = entry.pid.map(|p| p.to_string()).unwrap_or_else(|| "-".to_string());
+        let mem = entry.memory_display();
+        
+        let line = format!(
+            "  {:>5}   {:5}  {:16} {:>6}   {:>6}   {:10} {}",
+            entry.port,
+            entry.protocol,
+            truncate(process, 16),
+            pid,
+            mem,
+            entry.state,
+            addr_str
+        );
+        
+        // Highlight new entries in green
+        let styled_line = if use_colors && is_new {
+            format!("{}", line.green())
+        } else {
+            line
+        };
+        
+        output.push_str(&styled_line);
+        output.push('\n');
+    }
+    
+    // Show removed ports in red
+    if use_colors && !removed.is_empty() {
+        for port in removed {
+            let line = format!(
+                "  {:>5}   {:5}  {:16} {:>6}   {:>6}   {:10} {}",
+                port, "-", "(removed)", "-", "-", "-", "-"
+            );
+            output.push_str(&format!("{}\n", line.red()));
+        }
+    }
+    
+    // Summary
+    let summary = PortSummary::from_entries(entries);
+    output.push('\n');
+    
+    let mut summary_parts = vec![format!("{} ports listening", summary.total)];
+    if !added.is_empty() {
+        summary_parts.push(if use_colors {
+            format!("+{}", added.len()).green().to_string()
+        } else {
+            format!("+{}", added.len())
+        });
+    }
+    if !removed.is_empty() {
+        summary_parts.push(if use_colors {
+            format!("-{}", removed.len()).red().to_string()
+        } else {
+            format!("-{}", removed.len())
+        });
+    }
+    
+    let summary_line = format!(
+        "  {} ({} external, {} localhost-only)  [q to quit]",
+        summary_parts.join(" "),
+        summary.external,
+        summary.localhost
+    );
+    output.push_str(&if use_colors && !opts.no_color {
+        summary_line.dimmed().to_string()
+    } else {
+        summary_line
+    });
+    output.push('\n');
+    
+    output
+}
+
+/// Truncate a string.
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len.saturating_sub(3)])
+    }
 }
 
 /// Set up Ctrl+C handler.

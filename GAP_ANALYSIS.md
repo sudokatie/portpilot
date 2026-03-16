@@ -2,9 +2,11 @@
 
 ## Status: SPEC COMPLETE (v0.1)
 
-Build: Release binary 2MB, 60 tests passing.
+Build: Release binary ~2MB, 60 tests passing.
 
 ## Implementation Status
+
+All spec requirements now implemented.
 
 ### CLI Interface - COMPLETE
 
@@ -17,7 +19,7 @@ Build: Release binary 2MB, 60 tests passing.
 | `--oneline` | DONE |
 | `--no-color` | DONE |
 | `--udp` | DONE |
-| `--sockets` | PARTIAL (flag exists) |
+| `--sockets` | DONE (parses /proc/net/unix on Linux, lsof -U on macOS) |
 | Port query | DONE |
 | `--filter` | DONE |
 | `--user` | DONE |
@@ -25,7 +27,7 @@ Build: Release binary 2MB, 60 tests passing.
 | `--local` | DONE |
 | `--sort` | DONE |
 | `--reverse` | DONE |
-| `--watch` | DONE |
+| `--watch` | DONE (with green/red highlighting for changes) |
 | `--interval` | DONE |
 | `--kill` | DONE |
 | `--force` | DONE |
@@ -39,7 +41,7 @@ All formats implemented: Human, JSON, Oneline, Quiet.
 
 ### Port Information Model - COMPLETE
 
-All fields implemented. Container detection is a stub.
+All fields implemented including container detection (Linux).
 
 ### Platform Support
 
@@ -51,11 +53,34 @@ All fields implemented. Container detection is a stub.
 
 ### Process Management - COMPLETE
 
-SIGTERM, SIGKILL, wait-for-free all working.
+- SIGTERM, SIGKILL, wait-for-free all working
+- `send_sigterm()` function for SIGTERM-only
 
 ### TUI Mode - COMPLETE
 
-All keybindings implemented. Kill confirmation prompt is simplified.
+| Key | Action | Status |
+|-----|--------|--------|
+| `q` / `Esc` | Quit | DONE |
+| `j` / `Down` | Move down | DONE |
+| `k` / `Up` | Move up | DONE |
+| `g` | Go to top | DONE |
+| `G` | Go to bottom | DONE |
+| `Enter` | Show full detail popup | DONE |
+| `K` | Kill with confirmation dialog | DONE |
+| `S` | Send SIGTERM only | DONE |
+| `/` | Enter filter mode | DONE |
+| `Esc` (filter) | Clear filter | DONE |
+| `r` / `R` | Refresh | DONE |
+| `s` | Cycle sort field | DONE |
+| `e` | Toggle external filter | DONE |
+| `l` | Toggle localhost filter | DONE |
+| `?` / `h` | Show help | DONE |
+
+### Watch Mode - COMPLETE
+
+- Green highlighting for new ports
+- Red highlighting for removed ports
+- Change counts in summary line
 
 ### Filtering and Sorting - COMPLETE
 
@@ -74,16 +99,18 @@ All filter and sort options working.
 
 | Metric | Target | Actual |
 |--------|--------|--------|
-| Binary size | <5MB | 2MB |
+| Binary size | <5MB | ~2MB |
 | Startup | <200ms | ~10ms |
 | Full scan | <500ms | ~100ms |
 
-## Minor Enhancements (Not Blocking)
+## Recent Fixes (This Session)
 
-1. Unix socket parsing
-2. Container detection
-3. Watch mode change highlighting
-4. TUI kill confirmation dialog
+1. **Unix socket parsing** - Added `/proc/net/unix` parsing (Linux) and `lsof -U` (macOS)
+2. **Container detection** - Reads `/proc/[pid]/cgroup`, resolves Docker container names
+3. **Watch mode highlighting** - Green for added ports, red for removed
+4. **TUI kill confirmation** - Dialog with [Y]/[N] prompt before killing
+5. **TUI Enter key** - Shows full detail popup for selected port
+6. **TUI 'S' key** - Sends SIGTERM only (no SIGKILL fallback)
 
 ## Commands
 
@@ -97,6 +124,8 @@ cargo test
 # Run
 ./target/release/portpilot
 ./target/release/portpilot --json
+./target/release/portpilot --sockets    # Include Unix sockets
+./target/release/portpilot --watch      # Live updates with highlighting
 ./target/release/portpilot 3000
 ./target/release/portpilot --tui
 ```
