@@ -4,32 +4,31 @@
 
 Build: Release binary ~2MB, 60 tests passing.
 
-## Implementation Status
+All SPECS.md requirements implemented.
 
-All spec requirements now implemented.
+## Implementation Status
 
 ### CLI Interface - COMPLETE
 
 | Feature | Status |
 |---------|--------|
-| `--help` | DONE |
-| `--version` | DONE |
-| `--json` | DONE |
-| `--quiet` | DONE |
-| `--oneline` | DONE |
+| `--help` / `-h` | DONE |
+| `--version` / `-V` | DONE |
+| `--json` / `-j` | DONE |
+| `--quiet` / `-q` | DONE |
+| `--oneline` / `-1` | DONE |
 | `--no-color` | DONE |
-| `--udp` | DONE |
-| `--sockets` | DONE (parses /proc/net/unix on Linux, lsof -U on macOS) |
-| Port query | DONE |
-| `--filter` | DONE |
+| `--udp` / `-u` | DONE |
+| `--sockets` / `-s` | DONE |
+| `--filter` / `-f` | DONE |
 | `--user` | DONE |
-| `--external` | DONE |
-| `--local` | DONE |
+| `--external` / `-e` | DONE |
+| `--local` / `-l` | DONE |
 | `--sort` | DONE |
-| `--reverse` | DONE |
-| `--watch` | DONE (with green/red highlighting for changes) |
+| `--reverse` / `-r` | DONE |
+| `--watch` / `-w` | DONE |
 | `--interval` | DONE |
-| `--kill` | DONE |
+| `--kill` / `-k` | DONE |
 | `--force` | DONE |
 | `--wait` | DONE |
 | `--timeout` | DONE |
@@ -37,11 +36,24 @@ All spec requirements now implemented.
 
 ### Output Formats - COMPLETE
 
-All formats implemented: Human, JSON, Oneline, Quiet.
+| Format | Status |
+|--------|--------|
+| Human | DONE |
+| JSON | DONE (correct field names: process, parent_process, external) |
+| Oneline | DONE |
+| Quiet | DONE |
+
+### Exit Codes - COMPLETE
+
+| Code | Meaning | Status |
+|------|---------|--------|
+| 0 | Success / port free | DONE |
+| 1 | Failure / port in use | DONE |
+| 2 | Invalid arguments | DONE |
 
 ### Port Information Model - COMPLETE
 
-All fields implemented including container detection (Linux).
+All fields implemented per spec.
 
 ### Platform Support
 
@@ -53,38 +65,36 @@ All fields implemented including container detection (Linux).
 
 ### Process Management - COMPLETE
 
-- SIGTERM, SIGKILL, wait-for-free all working
-- `send_sigterm()` function for SIGTERM-only
+- SIGTERM -> wait -> SIGKILL workflow
+- Force SIGKILL option
+- Wait for port free
+- Suggest sudo on permission denied
 
 ### TUI Mode - COMPLETE
 
-| Key | Action | Status |
-|-----|--------|--------|
-| `q` / `Esc` | Quit | DONE |
-| `j` / `Down` | Move down | DONE |
-| `k` / `Up` | Move up | DONE |
-| `g` | Go to top | DONE |
-| `G` | Go to bottom | DONE |
-| `Enter` | Show full detail popup | DONE |
-| `K` | Kill with confirmation dialog | DONE |
-| `S` | Send SIGTERM only | DONE |
-| `/` | Enter filter mode | DONE |
-| `Esc` (filter) | Clear filter | DONE |
-| `r` / `R` | Refresh | DONE |
-| `s` | Cycle sort field | DONE |
-| `e` | Toggle external filter | DONE |
-| `l` | Toggle localhost filter | DONE |
-| `?` / `h` | Show help | DONE |
+All keybindings implemented per spec:
+- Navigation (j/k/g/G/Up/Down)
+- Enter for detail popup
+- K for kill with confirmation
+- S for SIGTERM only
+- Filter mode (/)
+- Sort cycling (s)
+- External/localhost toggles (e/l)
+- Help (?/h)
+- Quit (q/Esc)
+- Auto-refresh (2 seconds)
 
 ### Watch Mode - COMPLETE
 
+- Live updates with configurable interval
 - Green highlighting for new ports
 - Red highlighting for removed ports
-- Change counts in summary line
 
-### Filtering and Sorting - COMPLETE
+### Additional Features - COMPLETE
 
-All filter and sort options working.
+- Unix socket parsing (--sockets)
+- Container detection (Linux)
+- Permission denied handling with sudo hint
 
 ### Testing - TARGET MET
 
@@ -103,15 +113,6 @@ All filter and sort options working.
 | Startup | <200ms | ~10ms |
 | Full scan | <500ms | ~100ms |
 
-## Recent Fixes (This Session)
-
-1. **Unix socket parsing** - Added `/proc/net/unix` parsing (Linux) and `lsof -U` (macOS)
-2. **Container detection** - Reads `/proc/[pid]/cgroup`, resolves Docker container names
-3. **Watch mode highlighting** - Green for added ports, red for removed
-4. **TUI kill confirmation** - Dialog with [Y]/[N] prompt before killing
-5. **TUI Enter key** - Shows full detail popup for selected port
-6. **TUI 'S' key** - Sends SIGTERM only (no SIGKILL fallback)
-
 ## Commands
 
 ```bash
@@ -121,11 +122,12 @@ cargo build --release
 # Test
 cargo test
 
-# Run
+# Run examples
 ./target/release/portpilot
 ./target/release/portpilot --json
-./target/release/portpilot --sockets    # Include Unix sockets
-./target/release/portpilot --watch      # Live updates with highlighting
+./target/release/portpilot --sockets
+./target/release/portpilot --watch
 ./target/release/portpilot 3000
+./target/release/portpilot 3000-3010
 ./target/release/portpilot --tui
 ```
