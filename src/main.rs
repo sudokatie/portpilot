@@ -1,6 +1,6 @@
 //! portpilot CLI entry point.
 
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use portpilot::{
     cli::{Cli, PortSpec},
     filter::{filter_entries, FilterOptions},
@@ -65,7 +65,13 @@ fn main() -> ExitCode {
     
     // TUI mode
     if cli.tui {
-        if let Err(e) = tui::run_tui(scan_opts) {
+        // TUI defaults to 2000ms refresh (per spec Section 7), but respects --interval if provided
+        // Watch mode defaults to 1000ms (per spec Section 10)
+        // Use value_source() to detect if user explicitly set --interval
+        let matches = Cli::command().get_matches_from(std::env::args_os());
+        let interval_explicit = matches.value_source("interval") == Some(clap::parser::ValueSource::CommandLine);
+        let tui_interval = if interval_explicit { cli.interval } else { 2000 };
+        if let Err(e) = tui::run_tui_with_interval(scan_opts, tui_interval) {
             eprintln!("TUI error: {}", e);
             return ExitCode::FAILURE;
         }
@@ -165,10 +171,16 @@ fn handle_single_port(port: u16, cli: &Cli, output_opts: &OutputOptions) -> Exit
                             return ExitCode::SUCCESS;
                         }
                         Err(e) => {
-                            eprintln!("Failed to kill process: {}", e);
-                            // Suggest sudo for permission errors
-                            if e.to_string().contains("Permission denied") {
-                                eprintln!("Try running with sudo.");
+                            // Handle specific error types per spec
+                            let msg = e.to_string();
+                            if msg.contains("not found") {
+                                eprintln!("Process no longer exists.");
+                            } else {
+                                eprintln!("Failed to kill process: {}", e);
+                                // Suggest sudo for permission errors
+                                if msg.contains("Permission denied") {
+                                    eprintln!("Try running with sudo.");
+                                }
                             }
                             return ExitCode::FAILURE;
                         }

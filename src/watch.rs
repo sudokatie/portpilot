@@ -5,10 +5,12 @@ use crate::filter::{filter_entries, FilterOptions};
 use crate::sort::{sort_entries, SortOptions};
 use crate::output::{OutputFormat, OutputOptions, PortSummary};
 use colored::Colorize;
+use crossterm::event::{self, Event, KeyCode};
 use std::collections::HashSet;
 use std::io::{self, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
-use std::thread;
 
 /// Run watch mode.
 pub fn run_watch(
@@ -23,14 +25,17 @@ pub fn run_watch(
     let use_colors = !output_opts.no_color && output_opts.format == OutputFormat::Human;
     
     // Set up Ctrl+C handler
-    let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
     
-    ctrlc_handler(move || {
-        r.store(false, std::sync::atomic::Ordering::SeqCst);
-    });
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    }).expect("Error setting Ctrl+C handler");
     
-    while running.load(std::sync::atomic::Ordering::SeqCst) {
+    // Enable raw mode for keyboard input
+    crossterm::terminal::enable_raw_mode()?;
+    
+    while running.load(Ordering::SeqCst) {
         // Clear screen
         print!("\x1B[2J\x1B[1;1H");
         io::stdout().flush()?;
@@ -49,6 +54,7 @@ pub fn run_watch(
                 // Output with highlighting
                 let output = format_watch_output(&entries, &added, &removed, use_colors, &output_opts);
                 print!("{}", output);
+                io::stdout().flush()?;
                 
                 // Update for next iteration
                 previous_ports = current_ports;
@@ -58,9 +64,26 @@ pub fn run_watch(
             }
         }
         
-        // Wait for interval
-        thread::sleep(Duration::from_millis(interval_ms));
+        // Poll for 'q' key during interval
+        let poll_interval = Duration::from_millis(50);
+        let total_wait = Duration::from_millis(interval_ms);
+        let mut elapsed = Duration::ZERO;
+        
+        while elapsed < total_wait && running.load(Ordering::SeqCst) {
+            if event::poll(poll_interval)? {
+                if let Event::Key(key) = event::read()? {
+                    if key.code == KeyCode::Char('q') || key.code == KeyCode::Char('Q') {
+                        running.store(false, Ordering::SeqCst);
+                        break;
+                    }
+                }
+            }
+            elapsed += poll_interval;
+        }
     }
+    
+    // Restore terminal
+    crossterm::terminal::disable_raw_mode()?;
     
     Ok(())
 }
@@ -173,18 +196,4 @@ fn truncate(s: &str, max_len: usize) -> String {
     } else {
         format!("{}...", &s[..max_len.saturating_sub(3)])
     }
-}
-
-/// Set up Ctrl+C handler.
-fn ctrlc_handler<F: FnOnce() + Send + 'static>(handler: F) {
-    // Simple handler - in production would use ctrlc crate
-    let _handler = std::sync::Mutex::new(Some(handler));
-    
-    // This is a simplified version - real implementation would use signal handlers
-    std::thread::spawn(move || {
-        // Wait for signal (simplified - would use actual signal handling)
-        loop {
-            std::thread::sleep(Duration::from_secs(3600));
-        }
-    });
 }

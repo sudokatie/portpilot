@@ -39,10 +39,12 @@ pub struct App {
     pub confirm_kill: bool,
     /// Status message (for feedback).
     pub status_message: Option<String>,
+    /// Refresh interval in milliseconds.
+    pub interval_ms: u64,
 }
 
 impl App {
-    pub fn new(scan_opts: ScanOptions) -> Self {
+    pub fn new(scan_opts: ScanOptions, interval_ms: u64) -> Self {
         Self {
             should_quit: false,
             entries: Vec::new(),
@@ -56,6 +58,7 @@ impl App {
             show_detail: false,
             confirm_kill: false,
             status_message: None,
+            interval_ms,
         }
     }
     
@@ -159,7 +162,7 @@ impl App {
     }
     
     fn run_loop(&mut self, terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> io::Result<()> {
-        let tick_rate = Duration::from_millis(2000);
+        let tick_rate = Duration::from_millis(self.interval_ms);
         let mut last_tick = std::time::Instant::now();
         
         loop {

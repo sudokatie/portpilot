@@ -105,12 +105,16 @@ fn draw_detail(f: &mut Frame, app: &App, area: Rect) {
         let cmd = entry.command.as_deref().unwrap_or("-");
         let user = entry.user.as_deref().unwrap_or("-");
         let cpu = entry.cpu_percent.map(|c| format!("{:.1}%", c)).unwrap_or_else(|| "-".to_string());
+        let started = entry.started_at
+            .map(format_time_ago_short)
+            .unwrap_or_else(|| "-".to_string());
         
         vec![
             Line::from(format!("Process: {}    Command: {}", process, cmd)),
             Line::from(format!(
-                "User: {}    Memory: {}    CPU: {}",
+                "User: {}    Started: {}    Memory: {}    CPU: {}",
                 user,
+                started,
                 entry.memory_display(),
                 cpu
             )),
@@ -123,8 +127,24 @@ fn draw_detail(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(paragraph, area);
 }
 
+/// Format time ago in short form (e.g., "2h ago").
+fn format_time_ago_short(time: chrono::DateTime<chrono::Utc>) -> String {
+    let now = chrono::Utc::now();
+    let duration = now.signed_duration_since(time);
+    
+    if duration.num_days() > 0 {
+        format!("{}d ago", duration.num_days())
+    } else if duration.num_hours() > 0 {
+        format!("{}h ago", duration.num_hours())
+    } else if duration.num_minutes() > 0 {
+        format!("{}m ago", duration.num_minutes())
+    } else {
+        "now".to_string()
+    }
+}
+
 fn draw_help(f: &mut Frame) {
-    let area = centered_rect(60, 50, f.area());
+    let area = centered_rect(60, 60, f.area());
     
     let help_text = vec![
         Line::from("Keybindings:"),
@@ -133,12 +153,15 @@ fn draw_help(f: &mut Frame) {
         Line::from("  k/Up      Move up"),
         Line::from("  g         Go to top"),
         Line::from("  G         Go to bottom"),
-        Line::from("  K         Kill process"),
+        Line::from("  Enter     Show full detail"),
+        Line::from("  K         Kill process (confirm)"),
+        Line::from("  S         Send SIGTERM only"),
         Line::from("  /         Filter by process"),
         Line::from("  e         Toggle external only"),
         Line::from("  l         Toggle localhost only"),
         Line::from("  s         Cycle sort field"),
         Line::from("  r/R       Refresh"),
+        Line::from("  ?/h       Show this help"),
         Line::from("  q/Esc     Quit"),
         Line::from(""),
         Line::from("Press any key to close"),

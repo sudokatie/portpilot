@@ -89,6 +89,9 @@ pub struct PortEntry {
     /// Whether port is externally accessible (computed field for JSON).
     #[serde(skip_deserializing)]
     pub external: bool,
+    /// Whether process info was denied due to permissions.
+    #[serde(skip)]
+    pub access_denied: bool,
 }
 
 impl PortEntry {
@@ -114,6 +117,7 @@ impl PortEntry {
             state: SocketState::Listen,
             container: None,
             external,
+            access_denied: false,
         }
     }
     
@@ -142,8 +146,13 @@ impl PortEntry {
     }
     
     /// Get process name or placeholder.
+    /// Returns "(access denied)" if process info unavailable due to permissions.
     pub fn process_display(&self) -> &str {
-        self.process_name.as_deref().unwrap_or("-")
+        if self.access_denied {
+            "(access denied)"
+        } else {
+            self.process_name.as_deref().unwrap_or("-")
+        }
     }
 }
 
@@ -212,5 +221,26 @@ mod tests {
         assert_eq!(format_bytes(2048), "2KB");
         assert_eq!(format_bytes(10 * 1024 * 1024), "10MB");
         assert_eq!(format_bytes(2 * 1024 * 1024 * 1024), "2.0GB");
+    }
+    
+    #[test]
+    fn test_process_display_normal() {
+        let mut entry = PortEntry::new(80, Protocol::Tcp, IpAddr::V4(Ipv4Addr::LOCALHOST));
+        entry.process_name = Some("nginx".to_string());
+        assert_eq!(entry.process_display(), "nginx");
+    }
+    
+    #[test]
+    fn test_process_display_no_name() {
+        let entry = PortEntry::new(80, Protocol::Tcp, IpAddr::V4(Ipv4Addr::LOCALHOST));
+        assert_eq!(entry.process_display(), "-");
+    }
+    
+    #[test]
+    fn test_process_display_access_denied() {
+        let mut entry = PortEntry::new(80, Protocol::Tcp, IpAddr::V4(Ipv4Addr::LOCALHOST));
+        entry.pid = Some(1234);
+        entry.access_denied = true;
+        assert_eq!(entry.process_display(), "(access denied)");
     }
 }

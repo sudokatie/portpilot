@@ -159,7 +159,8 @@ pub fn format_range(entries: &[PortEntry], start: u16, end: u16, opts: &OutputOp
     }
     
     output.push('\n');
-    let summary = format!("  {} port(s) in use ({} available)", in_use, available);
+    let port_word = if in_use == 1 { "port" } else { "ports" };
+    let summary = format!("  {} {} in use ({} available)", in_use, port_word, available);
     output.push_str(&if use_colors { summary.dimmed().to_string() } else { summary });
     output.push('\n');
     
@@ -188,11 +189,26 @@ fn format_time_ago(time: chrono::DateTime<Utc>) -> String {
     let duration = now.signed_duration_since(time);
     
     if duration.num_days() > 0 {
-        format!("{} day(s) ago", duration.num_days())
+        let days = duration.num_days();
+        if days == 1 {
+            "1 day ago".to_string()
+        } else {
+            format!("{} days ago", days)
+        }
     } else if duration.num_hours() > 0 {
-        format!("{} hour(s) ago", duration.num_hours())
+        let hours = duration.num_hours();
+        if hours == 1 {
+            "1 hour ago".to_string()
+        } else {
+            format!("{} hours ago", hours)
+        }
     } else if duration.num_minutes() > 0 {
-        format!("{} minute(s) ago", duration.num_minutes())
+        let minutes = duration.num_minutes();
+        if minutes == 1 {
+            "1 minute ago".to_string()
+        } else {
+            format!("{} minutes ago", minutes)
+        }
     } else {
         "just now".to_string()
     }
@@ -212,6 +228,7 @@ mod tests {
     use super::*;
     use std::net::{IpAddr, Ipv4Addr};
     use crate::scanner::Protocol;
+    use chrono::Duration;
     
     #[test]
     fn test_truncate() {
@@ -229,5 +246,58 @@ mod tests {
         
         assert!(output.contains("3000"));
         assert!(output.contains("tcp"));
+    }
+    
+    #[test]
+    fn test_format_time_ago_pluralization() {
+        let now = Utc::now();
+        
+        // 1 hour ago - singular
+        let one_hour = now - Duration::hours(1);
+        assert_eq!(format_time_ago(one_hour), "1 hour ago");
+        
+        // 2 hours ago - plural
+        let two_hours = now - Duration::hours(2);
+        assert_eq!(format_time_ago(two_hours), "2 hours ago");
+        
+        // 1 day ago - singular
+        let one_day = now - Duration::days(1);
+        assert_eq!(format_time_ago(one_day), "1 day ago");
+        
+        // 3 days ago - plural
+        let three_days = now - Duration::days(3);
+        assert_eq!(format_time_ago(three_days), "3 days ago");
+        
+        // 1 minute ago - singular
+        let one_minute = now - Duration::minutes(1);
+        assert_eq!(format_time_ago(one_minute), "1 minute ago");
+        
+        // 5 minutes ago - plural
+        let five_minutes = now - Duration::minutes(5);
+        assert_eq!(format_time_ago(five_minutes), "5 minutes ago");
+        
+        // Just now
+        let just_now = now - Duration::seconds(30);
+        assert_eq!(format_time_ago(just_now), "just now");
+    }
+    
+    #[test]
+    fn test_format_range_summary_pluralization() {
+        let entries = vec![
+            PortEntry::new(3000, Protocol::Tcp, IpAddr::V4(Ipv4Addr::LOCALHOST)),
+        ];
+        let opts = OutputOptions { no_color: true, ..Default::default() };
+        
+        // Single port in use
+        let output = format_range(&entries, 3000, 3001, &opts);
+        assert!(output.contains("1 port in use"), "Should say '1 port' not '1 ports': {}", output);
+        
+        // Multiple ports in use
+        let entries2 = vec![
+            PortEntry::new(3000, Protocol::Tcp, IpAddr::V4(Ipv4Addr::LOCALHOST)),
+            PortEntry::new(3001, Protocol::Tcp, IpAddr::V4(Ipv4Addr::LOCALHOST)),
+        ];
+        let output2 = format_range(&entries2, 3000, 3002, &opts);
+        assert!(output2.contains("2 ports in use"), "Should say '2 ports' not '2 port': {}", output2);
     }
 }

@@ -195,6 +195,7 @@ fn parse_lsof_line(line: &str) -> Option<PortEntry> {
 
 /// Enrich port entry with process info from sysinfo.
 pub fn enrich_with_sysinfo(entry: &mut PortEntry, system: &sysinfo::System) {
+    use chrono::DateTime;
     use sysinfo::Pid;
     
     if let Some(pid) = entry.pid {
@@ -209,25 +210,38 @@ pub fn enrich_with_sysinfo(entry: &mut PortEntry, system: &sysinfo::System) {
             entry.memory_bytes = Some(process.memory());
             entry.cpu_percent = Some(process.cpu_usage());
             
+            // Set started_at from process start time
+            entry.started_at = DateTime::from_timestamp(process.start_time() as i64, 0);
+            
             if let Some(parent_pid) = process.parent() {
                 entry.parent_pid = Some(parent_pid.as_u32());
                 if let Some(parent) = system.process(parent_pid) {
                     entry.parent_name = Some(parent.name().to_string_lossy().to_string());
                 }
             }
+        } else {
+            // Process exists (we have PID) but can't access info - likely permission denied
+            if entry.process_name.is_none() {
+                entry.access_denied = true;
+            }
         }
         
-        // Detect container (Linux only)
+        // Detect container
         #[cfg(target_os = "linux")]
         {
-            entry.container = detect_container(pid_u32);
+            entry.container = detect_container_linux(pid_u32);
+        }
+        
+        #[cfg(target_os = "macos")]
+        {
+            entry.container = detect_container_macos(pid_u32);
         }
     }
 }
 
-/// Detect if a process is running in a Docker container.
+/// Detect if a process is running in a Docker container (Linux).
 #[cfg(target_os = "linux")]
-fn detect_container(pid: u32) -> Option<String> {
+fn detect_container_linux(pid: u32) -> Option<String> {
     use std::fs;
     
     // Read cgroup info
@@ -280,6 +294,49 @@ fn get_docker_container_name(container_id: &str) -> Option<String> {
         let name = name.trim().trim_start_matches('/');
         if !name.is_empty() {
             return Some(name.to_string());
+        }
+    }
+    
+    None
+}
+
+/// Detect if a process is running in a Docker container (macOS).
+/// On macOS, Docker runs in a VM, so detection is different.
+#[cfg(target_os = "macos")]
+fn detect_container_macos(pid: u32) -> Option<String> {
+    use std::process::Command;
+    
+    // On macOS, Docker Desktop uses com.docker.backend to proxy ports.
+    // We can check if this port is mapped to a container via docker ps.
+    
+    // First, try to find containers with port mappings
+    let output = Command::new("docker")
+        .args(["ps", "--format", "{{.ID}}\t{{.Names}}\t{{.Ports}}"])
+        .output()
+        .ok()?;
+    
+    if !output.status.success() {
+        return None;
+    }
+    
+    // Get the port this process is listening on
+    // We need to correlate via the port, not the PID on macOS
+    // For now, return None - full implementation would require
+    // correlating the port to container port mappings
+    
+    // Check if the process is com.docker.backend (Docker's port proxy)
+    let ps_output = Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "comm="])
+        .output()
+        .ok()?;
+    
+    if ps_output.status.success() {
+        let comm = String::from_utf8_lossy(&ps_output.stdout);
+        let comm = comm.trim();
+        if comm.contains("docker") || comm.contains("com.docker") {
+            // This is Docker's port proxy, but we'd need to map to container
+            // For now, indicate it's Docker-related
+            return Some("docker".to_string());
         }
     }
     

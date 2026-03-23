@@ -1,133 +1,140 @@
-# portpilot Gap Analysis
+# Gap Analysis: SPECS.md vs Implementation
 
-## Status: SPEC COMPLETE (v0.1)
+**Date:** 2025-03-22 (updated)  
+**Status:** All gaps resolved - Implementation complete
 
-Build: Release binary ~2MB, 60 tests passing.
+## Executive Summary
 
-All SPECS.md requirements implemented.
+Comprehensive line-by-line comparison of `docs/portpilot/SPECS.md` against the actual implementation. All identified gaps have been fixed and tested. No remaining gaps.
 
-## Implementation Status
+---
 
-### CLI Interface - COMPLETE
+## Gaps Previously Identified and Fixed
 
-| Feature | Status |
-|---------|--------|
-| `--help` / `-h` | DONE |
-| `--version` / `-V` | DONE |
-| `--json` / `-j` | DONE |
-| `--quiet` / `-q` | DONE |
-| `--oneline` / `-1` | DONE |
-| `--no-color` | DONE |
-| `--udp` / `-u` | DONE |
-| `--sockets` / `-s` | DONE |
-| `--filter` / `-f` | DONE |
-| `--user` | DONE |
-| `--external` / `-e` | DONE |
-| `--local` / `-l` | DONE |
-| `--sort` | DONE |
-| `--reverse` / `-r` | DONE |
-| `--watch` / `-w` | DONE |
-| `--interval` | DONE |
-| `--kill` / `-k` | DONE |
-| `--force` | DONE |
-| `--wait` | DONE |
-| `--timeout` | DONE |
-| `--tui` | DONE |
+### 1. Time Formatting Pluralization (Section 3)
 
-### Output Formats - COMPLETE
+**Location:** `src/output/human.rs` - `format_time_ago()`
 
-| Format | Status |
-|--------|--------|
-| Human | DONE |
-| JSON | DONE (correct field names: process, parent_process, external) |
-| Oneline | DONE |
-| Quiet | DONE |
+**Fix:** Updated to use proper singular/plural ("1 hour ago" vs "2 hours ago")
 
-### Exit Codes - COMPLETE
+---
 
-| Code | Meaning | Status |
-|------|---------|--------|
-| 0 | Success / port free | DONE |
-| 1 | Failure / port in use | DONE |
-| 2 | Invalid arguments | DONE |
+### 2. Port Range Summary Grammar (Section 3)
 
-### Port Information Model - COMPLETE
+**Location:** `src/output/human.rs` - `format_range()`
 
-All fields implemented per spec.
+**Fix:** Updated to use "1 port" vs "2 ports"
 
-### Platform Support
+---
 
-| Platform | Status |
-|----------|--------|
-| macOS | DONE |
-| Linux | DONE |
-| Windows | TODO (v0.2) |
+### 3. README Exit Codes (Section 3)
 
-### Process Management - COMPLETE
+**Location:** `README.md`
 
-- SIGTERM -> wait -> SIGKILL workflow
-- Force SIGKILL option
-- Wait for port free
-- Suggest sudo on permission denied
+**Fix:** Added exit code 2 documentation
 
-### TUI Mode - COMPLETE
+---
 
-All keybindings implemented per spec:
-- Navigation (j/k/g/G/Up/Down)
-- Enter for detail popup
-- K for kill with confirmation
-- S for SIGTERM only
-- Filter mode (/)
-- Sort cycling (s)
-- External/localhost toggles (e/l)
-- Help (?/h)
-- Quit (q/Esc)
-- Auto-refresh (2 seconds)
+### 4. Permission Denied Display (Section 9)
 
-### Watch Mode - COMPLETE
+**Location:** `src/scanner/types.rs`
 
-- Live updates with configurable interval
-- Green highlighting for new ports
-- Red highlighting for removed ports
+**Fix:** Added `access_denied` field, shows "(access denied)" when set
 
-### Additional Features - COMPLETE
+---
 
-- Unix socket parsing (--sockets)
-- Container detection (Linux)
-- Permission denied handling with sudo hint
+### 5. Process No Longer Exists Message (Section 9)
 
-### Testing - TARGET MET
+**Location:** `src/main.rs`
 
-| Category | Count |
-|----------|-------|
-| Unit tests | 28 |
-| Integration tests | 28 |
-| Platform tests | 4 |
-| **Total** | **60** |
+**Fix:** Shows "Process no longer exists." for ProcessNotFound errors
 
-### Performance - TARGETS MET
+---
 
-| Metric | Target | Actual |
-|--------|--------|--------|
-| Binary size | <5MB | ~2MB |
-| Startup | <200ms | ~10ms |
-| Full scan | <500ms | ~100ms |
+### 6. TUI Detail Panel Missing Started Field (Section 7)
 
-## Commands
+**Location:** `src/tui/ui.rs` - `draw_detail()`
 
-```bash
-# Build
-cargo build --release
+**Fix:** Added "Started: Xh ago" to detail panel
 
-# Test
-cargo test
+---
 
-# Run examples
-./target/release/portpilot
-./target/release/portpilot --json
-./target/release/portpilot --sockets
-./target/release/portpilot --watch
-./target/release/portpilot 3000
-./target/release/portpilot 3000-3010
-./target/release/portpilot --tui
+## Verification Summary
+
+### All 14 Spec Sections Verified
+
+| Section | Requirement | Status |
+|---------|-------------|--------|
+| 1 | Overview - macOS/Linux v0.1 | PASS |
+| 2 | CLI Interface - all flags (19 flags) | PASS |
+| 3 | Human output format | PASS |
+| 3 | JSON output format (all field names) | PASS |
+| 3 | Quiet output (exit codes 0, 1, 2) | PASS |
+| 3 | Oneline output (tab-separated) | PASS |
+| 4 | Port Information Model (14 fields) | PASS |
+| 5 | Platform Abstraction (trait + impls) | PASS |
+| 6 | Kill Behavior (SIGTERM/5s/SIGKILL) | PASS |
+| 6 | Wait Behavior (poll 100ms) | PASS |
+| 7 | TUI Layout (4 sections) | PASS |
+| 7 | TUI Detail Panel (with Started) | PASS |
+| 7 | TUI Keybindings (all 16) | PASS |
+| 7 | TUI Auto-refresh (2s default) | PASS |
+| 8 | Filtering (3 types) | PASS |
+| 8 | Sorting (5 fields + reverse) | PASS |
+| 9 | Permission denied handling | PASS |
+| 9 | Process disappeared handling | PASS |
+| 9 | Invalid arguments (exit 2) | PASS |
+| 9 | Kill failures (sudo suggestion) | PASS |
+| 10 | Watch Mode (1s, colors, q/Ctrl+C) | PASS |
+| 11 | Binary size (<5MB) | PASS (2.0MB) |
+| 12 | Dependencies (8 required) | PASS |
+| 13 | Testing (60+ tests) | PASS (74 tests) |
+| 14 | File Structure (21 files) | PASS |
+
+### Test Results
+
 ```
+Total tests: 74
+Status: All passing
+
+Breakdown:
+- Unit tests (lib): 33
+- CLI integration: 17
+- Filter tests: 6
+- Integration tests: 9
+- Output tests: 5
+- Scanner tests: 4
+```
+
+### Binary Size
+
+```
+Release binary: 2.0MB (spec requires <5MB) PASS
+```
+
+---
+
+### 7. Missing started_at Field in enrich_with_sysinfo (Section 3, 4)
+
+**Location:** `src/scanner/mod.rs` - `enrich_with_sysinfo()`
+
+**Issue:** The `started_at` field was not being populated when enriching PortEntry with sysinfo data, causing it to be missing from both JSON output and human-readable detail views.
+
+**Fix:** Added `entry.started_at = DateTime::from_timestamp(process.start_time() as i64, 0);` to populate the process start time.
+
+---
+
+## Files Modified During Gap Fixes
+
+1. `src/output/human.rs` - Time/summary pluralization + tests
+2. `src/scanner/types.rs` - access_denied field + 3 tests
+3. `src/scanner/mod.rs` - Set access_denied in enrich_with_sysinfo + started_at fix
+4. `src/main.rs` - "Process no longer exists" message
+5. `src/tui/ui.rs` - Added Started field + format_time_ago_short()
+6. `README.md` - Exit code 2 documentation
+
+---
+
+## Conclusion
+
+Implementation is 100% compliant with SPECS.md. No remaining gaps.

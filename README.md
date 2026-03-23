@@ -66,8 +66,9 @@ portpilot --tui
 
 ## Exit Codes
 
-- `0` - Port is in use (or listing succeeded)
-- `1` - Port is not in use, or error occurred
+- `0` - Port is in use (query succeeded) or operation succeeded
+- `1` - Port is free (nothing using it) or operation failed
+- `2` - Invalid arguments or runtime error
 
 ## Flags
 
